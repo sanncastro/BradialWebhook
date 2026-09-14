@@ -1,0 +1,7 @@
+version: "3"
+
+endpoints:
+  - name: bradial-webhook
+    url: https://clunky-giant-drum.ngrok-free.dev
+    upstream:
+      url: http://127.0.0.1:5200

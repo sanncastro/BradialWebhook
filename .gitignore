@@ -1,0 +1,17 @@
+.vs/
+bin/
+obj/
+publish/
+Logs/
+*.user
+appsettings.Local.json
+.env
+.env.*
+!.env.example
+secrets.json
+*.publishsettings
+*.pfx
+*.key
+*.zip
+deployment/*.local.yml
+deployment/*.local.yaml
