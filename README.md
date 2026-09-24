@@ -1,159 +1,63 @@
 # Bradial Webhook
 
-Serviço ASP.NET Core que recebe eventos da Bradial, identifica quando um atendimento é transferido para o departamento urgente e envia uma notificação pelo Telegram.
+Integração em ASP.NET Core que recebe eventos de atendimento da Bradial e envia uma notificação ao Telegram quando uma conversa é transferida para um departamento configurado.
 
-## Arquitetura
+## O que o projeto demonstra
+
+- Recebimento e validação de webhooks em uma API REST;
+- processamento de eventos JSON e identificação de alterações no departamento;
+- integração com a Telegram Bot API usando `HttpClient`;
+- configuração de segredos fora do código-fonte;
+- instalação e atualização como serviço do Windows, com túnel ngrok.
+
+## Fluxo
 
 ```text
-Bradial
-   |
-   | HTTPS + segredo na URL
-   v
-ngrok (Serviço do Windows)
-   |
-   | http://127.0.0.1:5200
-   v
-BradialWebhook (Serviço do Windows)
-   |
-   | HTTPS
-   v
-Telegram Bot API
+Bradial → HTTPS/ngrok → API ASP.NET Core → Telegram Bot API
 ```
 
-O computador precisa permanecer ligado, conectado à internet e sem suspensão. O Visual Studio e terminais não precisam permanecer abertos.
+O endpoint `POST /api/webhook/bradial` valida o segredo da URL, aceita JSON de até 64 KB e processa eventos `conversation_updated`. Quando `team_id.current_value` corresponde ao departamento configurado, envia ao chat do Telegram o nome e o telefone recebidos no evento.
 
-## Funcionamento
+O endpoint `GET /api/webhook/bradial` permite verificar a disponibilidade do serviço. Ele não exige o segredo do POST.
 
-O endpoint `POST /api/webhook/bradial`:
+## Tecnologias
 
-1. valida o segredo informado em `?secret=...`;
-2. aceita somente JSON e limita o corpo a 64 KB;
-3. processa somente eventos `conversation_updated`;
-4. confirma que `team_id.current_value` corresponde ao departamento urgente;
-5. envia nome e telefone do cliente ao Telegram.
+C#, ASP.NET Core (.NET 10), PowerShell, Windows Services, ngrok e Telegram Bot API.
 
-O endpoint `GET /api/webhook/bradial` é uma verificação de disponibilidade e não exige segredo.
+## Executar localmente
 
-## Requisitos
-
-- Windows 10, Windows 11 ou Windows Server 64 bits;
-- PowerShell 5.1 ou superior;
-- .NET SDK 10 para compilar e publicar;
-- conta e domínio reservado no ngrok;
-- bot e chat configurados no Telegram;
-- PowerShell executado como administrador para instalar serviços.
-
-## Desenvolvimento local
-
-Configure os segredos do usuário sem colocá-los em arquivos:
+Instale o .NET SDK 10 e configure um bot e um chat no Telegram. Defina o ID do departamento em `Bradial:DepartamentoUrgenteId` e armazene os demais valores com user-secrets:
 
 ```powershell
 dotnet user-secrets set "Telegram:Token" "SEU_TOKEN"
 dotnet user-secrets set "Telegram:ChatId" "SEU_CHAT_ID"
 dotnet user-secrets set "Bradial:WebhookSecret" "UM_SEGREDO_COM_PELO_MENOS_32_CARACTERES"
-```
-
-Depois execute:
-
-```powershell
+dotnet user-secrets set "Bradial:DepartamentoUrgenteId" "ID_DO_DEPARTAMENTO"
 dotnet run
 ```
 
-## Instalação como servidor local
+Um modelo das chaves está em [appsettings.example.json](appsettings.example.json). Não publique valores reais em commits, issues ou capturas de tela.
 
-Abra o PowerShell como administrador na raiz do projeto:
+## Instalação no Windows
+
+Em PowerShell aberto como administrador, na raiz do projeto:
 
 ```powershell
-.\scripts\install.ps1 -PublicDomain "seu-dominio.ngrok-free.dev"
+.\scripts\install.ps1 -PublicDomain "seu-dominio.ngrok-free.dev" -DepartamentoUrgenteId 12345
 ```
 
-O instalador solicita os tokens sem mostrá-los na tela, gera um segredo de webhook e instala:
+O instalador solicita os tokens, gera um segredo para o webhook e configura a aplicação e o ngrok como serviços do Windows. A máquina precisa permanecer ligada e conectada à internet.
 
-- `BradialWebhook`, executado como `LocalService`;
-- `ngrok`, executado como `LocalSystem`;
-- recuperação automática após falhas;
-- inicialização automática atrasada;
-- executáveis e configurações em `C:\Services`.
-
-Ao final, copie a URL exibida pelo instalador para a configuração do webhook na Bradial.
-
-## Operação
-
-Diagnóstico completo:
+Comandos de manutenção:
 
 ```powershell
 .\scripts\diagnose.ps1
-```
-
-Publicar uma nova versão preservando segredos e serviços:
-
-```powershell
 .\scripts\update.ps1
-```
-
-Remover os serviços:
-
-```powershell
 .\scripts\uninstall.ps1
 ```
 
-Para remover também os arquivos instalados:
+Leia [MIGRACAO.md](MIGRACAO.md) para transferência entre máquinas, [SECURITY.md](SECURITY.md) para cuidados com segredos e [CHANGELOG.md](CHANGELOG.md) para o histórico técnico.
 
-```powershell
-.\scripts\uninstall.ps1 -RemoveFiles
-```
+## Autoria e contexto
 
-## Configurações
-
-| Chave | Obrigatória | Finalidade |
-|---|---:|---|
-| `Telegram__Token` | Sim | Token do bot do Telegram |
-| `Telegram__ChatId` | Sim | Chat que recebe notificações |
-| `Bradial__WebhookSecret` | Sim | Autenticação do webhook |
-| `Bradial__DepartamentoUrgenteId` | Sim | ID do departamento urgente |
-| `AllowedHosts` | Sim | Hosts locais e domínio público aceitos |
-| `NGROK_AUTHTOKEN` | Sim | Autenticação do agente ngrok |
-
-Em produção, essas configurações ficam no ambiente protegido dos Serviços do Windows. Nunca registre seus valores no GitHub.
-
-## Documentação adicional
-
-- [Migração para outra máquina ou conta](MIGRACAO.md)
-- [Histórico de mudanças](CHANGELOG.md)
-- [Práticas de segurança](SECURITY.md)
-- [Configuração de exemplo](appsettings.example.json)
-
-## Publicação no GitHub
-
-Antes do primeiro envio, execute o diagnóstico de segurança:
-
-```powershell
-.\scripts\diagnose.ps1 -ScanRepository
-```
-
-Em seguida, inicialize o Git somente se esta pasta ainda não for um repositório:
-
-```powershell
-git init
-git add .
-git status
-git commit -m "Documenta instalação e migração do BradialWebhook"
-```
-
-Crie no GitHub um repositório **privado e vazio** (sem README, `.gitignore` ou licença gerados pelo site). Depois conecte e envie o projeto:
-
-```powershell
-git remote add origin https://github.com/SEU-USUARIO/BradialWebhook.git
-git push -u origin main
-```
-
-Nas próximas atualizações:
-
-```powershell
-git add .
-git status
-git commit -m "Descreva resumidamente a alteração"
-git push
-```
-
-Revise sempre o resultado de `git status` antes de cada commit. A pasta local já pode ser reconstruída apenas com o repositório e com os segredos guardados separadamente.
+Projeto desenvolvido por Alexsander Castro para automatizar notificações de atendimentos urgentes. Antes de reutilizá-lo em outro ambiente, configure seus próprios acessos, domínio e identificadores.
